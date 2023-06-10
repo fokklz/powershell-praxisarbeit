@@ -1,11 +1,38 @@
-﻿# =====================================================================
-# Programm: praxisarbeit.ps1
-# Aufruf: praxisarbeit.ps1 [-Root] <string> [-UseContent] [-Manual]
-# Beschreibung: Aufräumen eines Shared drives. Projekte extrahieren & im root neu anordnen
-# Autor: Fokko Vo
-# Version: 1.0.0
-# Datum: 23.05.2023
-# =====================================================================
+﻿<#
+.SYNOPSIS
+    A script to clean up a shared drive by extracting and reorganizing projects.
+
+.DESCRIPTION
+    This script is designed to clean up a shared drive. It extracts projects and reorganizes them in a new root directory. 
+    It identifies projects based on the presence of certain files (like "package.json", "requirements.txt", "*.sln", "*.pyproj", "README.md").
+    The script also provides options to force overwrite of existing files, enable modification date detection by file content, 
+    only map projects without moving them, enable manual primary project selection, and keep all projects in root when moving.
+
+.PARAMETER
+    -Path: The directory to clean up.
+    -Out: The output directory for the cleaned up structure.
+    -Force: A switch to force overwrite of existing files in the output path.
+    -UseContent: A switch to enable modification date detection by file content.
+    -MapOnly: A switch to only map projects without moving them.
+    -Interactive: A switch to enable manual primary project selection.
+    -Flat: A switch to keep all projects in root when moving.
+
+.EXAMPLE
+    .\praxisarbeit.ps1 -Path "C:\SharedDrive" -Out "C:\CleanDrive" -Force -Flat
+
+.NOTES
+    The script creates a log file and a JSON file with the project details in the output directory.
+
+.AUTHOR
+    Fokko Vos
+
+.LASTEDIT
+    23.05.2023
+
+.VERSION
+    1.0.0
+#>
+
 
 param(
     # directory to cleanup
