@@ -6,7 +6,31 @@
         {
             "label": "Praxisarbeit",
             "type": "shell",
-            "command": "PowerShell -File ${workspaceFolder}/script.ps1",
+            "command": "PowerShell -File ${workspaceFolder}/script.ps1 test-data -Force -UseContent",
+            "problemMatcher": [],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "dependsOn": [
+                "Setup Test"
+            ],
+        }, 
+        {
+            "label": "MAP-ONLY: Praxisarbeit",
+            "type": "shell",
+            "command": "PowerShell -File ${workspaceFolder}/script.ps1 test-data -Force -MapOnly -UseContent",
+            "problemMatcher": [],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "dependsOn": [
+                "Setup Test"
+            ],
+        },
+        {
+            "label": "Praxisarbeit Manuel",
+            "type": "shell",
+            "command": "PowerShell -File ${workspaceFolder}/script.ps1 test-data -Force -UseContent -Manual",
             "problemMatcher": [],
             "options": {
                 "cwd": "${workspaceFolder}"

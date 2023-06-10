@@ -5,7 +5,7 @@
             "type": "PowerShell",
             "request": "launch",
             "name": "Debug Script",
-            "script": "${workspaceFolder}/script.ps1",
+            "script": "${workspaceFolder}/script.ps1 test-data -Force",
             "cwd": "${workspaceFolder}"
         }
     ]
