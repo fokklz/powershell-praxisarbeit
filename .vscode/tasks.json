@@ -46,7 +46,10 @@
             "problemMatcher": [],
             "options": {
                 "cwd": "${workspaceFolder}"
-            }
+            },
+            "dependsOn": [
+                "Cleanup Test"
+            ],
         },
         {
             "label": "Cleanup Test",
