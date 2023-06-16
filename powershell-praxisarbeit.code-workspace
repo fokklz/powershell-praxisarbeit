@@ -1,0 +1,13 @@
+{
+	"folders": [
+		{
+			"path": "."
+		}
+	],
+	"settings": {
+		"powershell.codeFormatting.avoidSemicolonsAsLineTerminators": true,
+		"powershell.codeFormatting.ignoreOneLineBlock": false,
+		"powershell.codeFormatting.newLineAfterCloseBrace": false,
+		"git.ignoreLimitWarning": true
+	}
+}

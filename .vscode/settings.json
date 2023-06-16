@@ -3,4 +3,5 @@
     "powershell.codeFormatting.ignoreOneLineBlock": false,
     "powershell.codeFormatting.newLineAfterCloseBrace": false,
     "editor.mouseWheelZoom": true,
+    "git.ignoreLimitWarning": true,
 }

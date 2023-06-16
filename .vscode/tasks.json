@@ -16,6 +16,15 @@
             ],
         }, 
         {
+            "label": "PRESENTATION: Praxisarbeit",
+            "type": "shell",
+            "command": "PowerShell -File ${workspaceFolder}/script.ps1 test-data -Force -UseContent -MakeLonger",
+            "problemMatcher": [],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            }
+        }, 
+        {
             "label": "MAP-ONLY: Praxisarbeit",
             "type": "shell",
             "command": "PowerShell -File ${workspaceFolder}/script.ps1 test-data -Force -MapOnly -UseContent",
@@ -28,9 +37,9 @@
             ],
         },
         {
-            "label": "Praxisarbeit Manuel",
+            "label": "INTERACTIVE: Praxisarbeit",
             "type": "shell",
-            "command": "PowerShell -File ${workspaceFolder}/script.ps1 test-data -Force -UseContent -Manual",
+            "command": "PowerShell -File ${workspaceFolder}/script.ps1 test-data -Force -UseContent -Interactive",
             "problemMatcher": [],
             "options": {
                 "cwd": "${workspaceFolder}"
