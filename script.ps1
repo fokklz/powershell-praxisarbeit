@@ -47,7 +47,8 @@ param(
     [switch]$MapOnly, # only map projects, do not move them
     [switch]$Interactive, # enable manual primary project selection
     [switch]$Flat, # keep all projects in root when moving
-    [switch]$NoVersions # do not create version folders
+    [switch]$NoVersions, # do not create version folders
+    [switch]$CopyOnly # only copy files, do not move them
 )
 
 # exit on error, handled with try-catch
@@ -132,7 +133,7 @@ function Exit-Error {
     The Exit-Error function is designed to be called when an error occurs in the script. 
     It changes the current location back to the original working directory ($OG_PWD), 
     then logs the runtime of the script and the error message, 
-    and finally exits the script with a status of 1, indicating an error.
+    and finally exits the script with a status of 1
 
     .EXAMPLE
     try {
@@ -147,13 +148,12 @@ function Exit-Error {
     The script should only be ended with this function. in case of an error.
     #>
     Set-Location $OG_PWD
-    try {
-        Write-Out -Type "Der Vorgang hat %s gedauert" (Get-RunTime) -LogOnly
-        Write-Out -Type "ERROR" "An error occurred on line $($args.Exception.InvocationInfo.ScriptLineNumber):" -LogOnly
+    Write-Out "Der Vorgang hat %s gedauert" (Get-RunTime) -ForceWriteLog -LogOnly
+    if ($args.Exception) {
+        if ($args.Exception.InvocationInfo.ScriptLineNumber) {
+            Write-Out -Type "ERROR" "An error occurred on line $($args.Exception.InvocationInfo.ScriptLineNumber):" -LogOnly
+        }
         Write-Out -Type "ERROR" $args.Exception -ForceWriteLog -LogOnly
-    }
-    catch {
-        throw $args.Exception
     }
     exit 1
 }   
@@ -167,7 +167,7 @@ function Exit-Success {
     The Exit-Success function is designed to be called when the script has successfully completed its execution. 
     It first changes the current location to the original working directory ($OG_PWD), 
     then prints and logs the runtime of the script and a success message, 
-    and finally exits the script with a status of 0, indicating successful execution.
+    and finally exits the script with a status of 0
 
     .EXAMPLE
     Exit-Success
@@ -178,7 +178,7 @@ function Exit-Success {
     The script should only be ended with this function in case of success.
     #>
     Set-Location $OG_PWD
-    Write-Out -Type "INFO" "Skript wurde erfolgreich durchgeführt, Vorgang hat %s gedauert" (Get-RunTime) -ForceWriteLog
+    Write-Out "Skript wurde erfolgreich durchgeführt! Vorgang hat %s gedauert." (Get-RunTime) -ForceWriteLog
     exit 0
 }
 
@@ -215,10 +215,10 @@ function Write-Out {
     .EXAMPLE
         Write-Out -Type "SYSTEM" "System started at %s" (Get-Date)
 
-        This will print the message "System started at <current date>" in green color to the console and write it to the log file.
+        Will print the message "System started at <current date>" in green color to the console and write it to the log file.
 
     .NOTES
-        The function maintains a log buffer (LOG_TEMP) and a log file (LOG_FILE). 
+        The function maintains a log buffer ($LOG_TEMP) and a log file ($LOG_FILE). 
         If the number of messages in the log buffer exceeds 30 or if the ForceWriteLog switch is set, 
         the function writes all messages in the buffer to the log file and then clears the buffer.
     #>
@@ -291,11 +291,10 @@ function Write-Out {
     if ($LOG_TEMP.Count -gt 30 -or $ForceWriteLog) {
         try {
             $LOG_TEMP | Out-File -FilePath $LOG_FILE -Append -Encoding utf8
-        } catch {
-            Write-Host "Fehler beim Schreiben in die Log-Datei" -ForegroundColor Red
-            Write-Host $_.Exception.Message -ForegroundColor Red
-        } finally {
+            # clear log buffer
             $LOG_TEMP.Clear()
+        } catch {
+            # ignore errrors
         }
     }
 }
@@ -336,9 +335,11 @@ function Get-LastModificationDate {
             # construct full path
             $fullPath = Join-Path -Path $Path -ChildPath $fileName
 
+            # match if file exists
             if (Test-Path -Path $fullPath) {
                 Get-Content -Path $fullPath | ForEach-Object {
                     if ($_ -match $RGX_COPYRIGHT) {
+                        # update year from first match
                         $year = $Matches[1]
                     }
                 }
@@ -349,8 +350,6 @@ function Get-LastModificationDate {
             }
         }
     }
-
-    Write-Host "Year: $year"
 
     if ($year -eq 0) {
         # extract oldest file inside folder
@@ -442,6 +441,7 @@ function Find-Projects {
 
             # create data object
             $data = [PSCustomObject]@{
+                name    = (Split-Path $_.FullName -Leaf)
                 path    = $_.FullName
                 date    = (Get-LastModificationDate $_.FullName)
                 primary = $false
@@ -451,8 +451,13 @@ function Find-Projects {
             # store data
             [void]$INDEX[$hash].Add($data)
             
-            Write-Out "Projekt %s gefunden" $hash
-            Write-Out "  - %s" (Resolve-Path -Path $_.FullName -Relative) -AddNewLine
+            # give detailed project information
+            Write-Out "Projekt %s gefunden" $data.name
+            if (($INDEX[$hash].Count - 1) -gt 0) {
+                Write-Out "  Version: %s" ($INDEX[$hash].Count - 1)
+            }
+            Write-Out "  Jahr: %s" ($data.date.Year)
+            Write-Out "  Pfad: %s" (Resolve-Path -Path $_.FullName -Relative) -AddNewLine
         }
     }
 }
@@ -496,11 +501,10 @@ function Write-ProjectsJSON {
     convert the data for the Projects to a valid json format
     and write the file to the disk
     
-    .PARAMETER HashTable
-    Hashtable containing the projects
-    
     .EXAMPLE
-    Write-ProjectsJSON -HashTable $INDEX
+    Write-ProjectsJSON
+
+    Will output the data to the file specified in the script scope
     
     .NOTES
     The date is converted to a universal time format
@@ -512,25 +516,26 @@ function Write-ProjectsJSON {
 
     foreach ($key in $INDEX.Keys) {
         # clone to avoid mutation errors
-        $values = $INDEX[$key] | ForEach-Object { $_ }
+        $values = $INDEX[$key].Clone()
         for ($i = 0; $i -lt $values.Count; $i++) {
-            $values[$i].date = $values[$i].date.ToString("yyyy-MM-ddTHH:mm:ssZ")
             if ($MapOnly) {
                 # remove new path when only mapping
                 $newData = [PSCustomObject]@{
                     path    = $values[$i].path
-                    date    = $values[$i].date
+                    date    = $values[$i].date.ToString("yyyy-MM-ddTHH:mm:ssZ")
                     primary = $values[$i].primary
                 }
                 $values[$i] = $newData
             }
         }
+
+        # add to sotorable project index
         $storableProjects.Add($key, $values)
     }
 
     # write to file
     $storableProjects | ConvertTo-Json -Depth 2 | Out-File -FilePath $PROJECTS_FILE -Encoding UTF8
-    Write-Out "Projetinformationen als JSON in %s geschpeichert" $PROJECTS_FILE
+    Write-Out "Die Projekte wurden als JSON in %s gespeichert" $PROJECTS_FILE
 }
 
 function Move-WithProgress {
@@ -556,10 +561,18 @@ function Move-WithProgress {
     The id for the parent progress bar
     
     .PARAMETER Levels
-    The recursion level
-    
+    The recursion level for the progress bar. Be careful with this parameter as it can lead to deep recursion 
+    if there are many nested directories. 
+
     .EXAMPLE
-    Move-WithProgress -Path $HOME/Documents -Destination $HOME/Projects -Id 10
+    Move-WriteProgress -Path $HOME/Documents/test -Destination $HOME/Projects -Id 10
+
+    This will move all items from "$HOME/Documents/test" to "$HOME/Projects" and display a progress bar with an ID of 1. 
+    If any items are directories, it will also display a nested progress bar with a recursion level of 2.
+
+    .NOTES
+    The function will automatically create the destination directory if it does not exist. 
+    After all items are moved, the source directory will be removed.
     #>
     param(
         [Parameter(Mandatory = $true, Position = 0)]
@@ -573,7 +586,7 @@ function Move-WithProgress {
 
     # auto increment id
     $current = $Id
-    if (-not ($ParentId -eq 0)){
+    if (-not ($ParentId -eq 0)) {
         $current = $ParentId + 1
     }
 
@@ -585,88 +598,162 @@ function Move-WithProgress {
     $name = Split-Path -Path $Path -Leaf
 
 
-    foreach ($item in $items){
+    foreach ($item in $items) {
         $completed = ($moved / $toMove) * 100
 
         # init & update progress bars
-        if($ParentId -eq 0){
+        if ($ParentId -eq 0) {
+            # update main progress bar
             Write-Progress -Id $current -Activity "Verschieben von $name" -Status "$item wird verschoben..." -PercentComplete $completed
-        }else{
-            Write-Progress -Id $current -Activity "Verschieben von $name" -Status "$item wird verschoben..." -PercentComplete $completed
+        } else {
+            # update sub progress bar
+            Write-Progress -ParentId $ParentId -Id $current -Activity "Verschieben von $name" -Status "$item wird verschoben..." -PercentComplete $completed
         }
 
         # call self if not reached recursion limit for progress bar
         if ($item -is [System.IO.DirectoryInfo] -and $current -lt ($Id + $Levels)) {
             Move-WithProgress -Path $item.FullName -Destination (Join-Path $Destination $item.Name) -Id $current -ParentId $current
-        }else{
+        } else {
+            # ensure destination folder exists
             New-Item -Path $Destination -ItemType Directory -Force | Out-Null
-            Move-Item -Path $item.FullName -Destination $Destination -Force
+            if ($CopyOnly) {
+                # copy item
+                Copy-Item -Path $item.FullName -Destination $Destination -Force
+            } else {
+                # finally move item
+                Move-Item -Path $item.FullName -Destination $Destination -Force
+            }
         }
 
+        # allow progress bar to update
         $moved++
     }
 
     # finish progress bars
     if ($ParentId -eq 0) {
+        # update main progress bar
         Write-Progress -Id $current -Activity "Verschieben von $name" -Status "Vollendet" -PercentComplete 100 -Completed
     } else {
-        Write-Progress -Id $current -Activity "Verschieben von $name" -Status "Vollendet" -PercentComplete 100 -Completed
+        # update sub progress bar
+        Write-Progress -ParentId $ParentId -Id $current -Activity "Verschieben von $name" -Status "Vollendet" -PercentComplete 100 -Completed
     }
 
-    # remove empty folder
-    Remove-Item -Path $Path
+    if (-not $CopyOnly) {
+        # remove empty folder
+        Remove-Item -Path $Path
+    }
 }
 
 function Remove-WithProgress {
+    <#
+    .SYNOPSIS
+    Removes items from a specified path with a progress bar.
+
+    .DESCRIPTION
+    The Remove-WithProgress function removes items from a specified path. 
+    It displays a progress bar during the operation. The progress bar can be nested to show progress 
+    of individual items if they are directories.
+
+    .PARAMETER Path
+    The path of the items to be removed.
+
+    .PARAMETER Id
+    The ID for the progress bar. This is used to identify the progress bar in the console.
+
+    .PARAMETER ParentId
+    The ID for the parent progress bar. This is used when the progress bar is nested.
+
+    .PARAMETER EmptyOnly
+    A switch parameter. If this is set, the base folder will be recreated after all items are removed.
+
+    .PARAMETER Levels
+    The recursion level for the progress bar. Be careful with this parameter as it can lead to deep recursion 
+    if there are many nested directories. 
+
+    .EXAMPLE
+    Remove-WithProgress -Path "$HOME/Projects" -Id 10 -EmptyOnly
+
+    This will remove all items from "$HOME/Projects" and display a progress bar
+    .NOTES
+    The function will ignore any errors during the removal process.
+    #>
     param(
         [Parameter(Mandatory = $true, Position = 0)]
-        [string]$Path,
-        [int]$Id,
-        [int]$ParentId = 0,
-        [switch]$EmptyOnly,
-        [int]$Levels = 2
+        [string]$Path, # path to remove
+        [int]$Id, # progress bar id
+        [int]$ParentId = 0, # parent progress bar id
+        [switch]$EmptyOnly, # recreate base folder at the end
+        [int]$Levels = 2 # recursion level for progress bar (be carefull)
     )
 
     # auto increment id
     $current = $Id
-    if (-not ($ParentId -eq 0)){
+    if (-not ($ParentId -eq 0)) {
         $current = $ParentId + 1
     }
 
+    # grab first sublevel
     $items = Get-ChildItem -Path $Path
     $toRemove = $items.Count
     $removed = 0
+    # extract name from path
     $name = Split-Path -Path $Path -Leaf
 
-    foreach ($item in $items){
+    # process sublevel
+    foreach ($item in $items) {
         $completed = ($removed / $toRemove) * 100
-        if($ParentId -eq 0){
+        # init & update progress bar
+        if ($ParentId -eq 0) {
             Write-Progress -Id $current -Activity "Entfernen von $name" -Status "$item wird entfernt..." -PercentComplete $completed
-        }else{
+        } else {
             Write-Progress -Id $current -Activity "Entfernen von $name" -Status "$item wird entfernt..." -PercentComplete $completed -ParentId $ParentId
         }
 
-        # allow 2 levels of recursion in progressbar
-        if($item -is [System.IO.DirectoryInfo] -and $current -lt ($Id+$Levels)){
+        # to much recursion will slow down the process strogly
+        if ($item -is [System.IO.DirectoryInfo] -and $current -lt ($Id + $Levels)) {
+            # call self on subfolders
             Remove-WithProgress -Path $item.FullName -ParentId $current -Id $Id
         }
         
+        # finally remove item, ignore errors
         Remove-Item -Path $item.FullName -Force -Recurse -ErrorAction SilentlyContinue
         $removed++
     }
 
-    if($ParentId -eq 0){
+    # complete progress bar
+    if ($ParentId -eq 0) {
         Write-Progress -Id $current -Activity "Entfernen von $name" -Status "Vorgang Abgeschlossen" -PercentComplete 100 -Completed
-    }else{
+    } else {
         Write-Progress -Id $current -Activity "Entfernen von $name" -Status "Vorgang Abgeschlossen" -PercentComplete 100 -Completed -ParentId $ParentId
     }
 
     if ($EmptyOnly) {
+        # recreate folder
         New-Item -Path $Path -ItemType Directory -Force | Out-Null
     }
 }
 
 function Get-Decision {
+    <#
+    .SYNOPSIS
+    Prompts the user for a decision (y/n) based on a provided message.
+
+    .DESCRIPTION
+    The Get-Decision function prompts the user for a decision (yes/no) based on a provided message. 
+    The function will keep prompting the user until a valid input ("y", "n" or empty) is provided. 
+    If no input is provided, the function defaults to "yes".
+
+    .PARAMETER Message
+    The message to display to the user when prompting for a decision.
+
+    .EXAMPLE
+    Get-Decision -Message "Do you want to continue?"
+
+    This will prompt the user with the message "Do you want to continue? (y/n, default: y)" and wait for a "y", "n" or empty response.
+
+    .NOTES
+    If the user enters anything other than "y" or "n" or empty, an error message will be displayed and the user will be prompted again.
+    #>
     param(
         [Parameter(Mandatory = $true, Position = 0)]
         [string]$Message
@@ -674,19 +761,23 @@ function Get-Decision {
 
     $decision = $true
     $inputString = $null
-    while ($inputString -ne "y" -and $inputString -ne "n") {
-        $inputString = Read-Host -Prompt "$Message (y/n, default: y)"
+    # keep prompting until a valid input is provided
+    while ($inputString -ne "j" -and $inputString -ne "n") {
+        # 'Read-Host' will add a ':' to the end
+        $inputString = Read-Host -Prompt "$Message (j/n, default: j)"
 
         if ([string]::IsNullOrEmpty($inputString)) {
+            # default to yes if no input is provided
             break
         }
 
-        if ($inputString -eq "y") {
+        if ($inputString -eq "j") {
             break
         } elseif ($inputString -eq "n") {
             $decision = $false
         } else {
-            Write-Out -Type "ERROR" "Eingabe %s ungültig. Bitte gib 'y' oder 'n' ein." $inputString
+            # do not log invalid input
+            Write-Host "Eingabe $inputString ungültig. Bitte gib 'j' oder 'n' ein." -ForegroundColor Red
         }
     }
     return $decision
@@ -723,29 +814,36 @@ if (Test-Path $Path) {
     Exit-Error
 }
 
-# make out-path absolute if relative
-if ($Out -notmatch $RGX_ABSOLUTE_PATH) {
-    $Out = Join-Path -Path $PWD -ChildPath $Out
-}
-# ensure out-path is syntactically correct
-try {
-    New-Item -Path $Out -ItemType Directory -Force | Out-Null
-    if ((Get-ChildItem -Path $Out).Length -gt 0) {
-        # help user to not overwrite existing files if not desired
-        if ($Force) {
-            Write-Out -Type "WARN" "Der angegebene Out-Pfad %s existiert bereits und wird überschrieben" $Out
-            Write-Host "Entfernen des Out-Ordners. Die könnte einen Moment dauern..."
-            Remove-WithProgress -Path $Out -EmptyOnly -Id 10
-        } else {
-            Write-Out -Type "ERROR" "Der angegebene Out-Pfad %s existiert bereits" $Out
-            Exit-Error
-        }
+# only validate out-path if not map-only
+if (-not $MapOnly) {
+    # make out-path absolute if relative
+    if ($Out -notmatch $RGX_ABSOLUTE_PATH) {
+        $Out = Join-Path -Path $PWD -ChildPath $Out
     }
-} catch {
-    Write-Out -Type "ERROR" "Der angegebene Out-Pfad %s ist ungültig" $Out
-    Exit-Error $_
+    # ensure out-path is syntactically correct
+    try {
+        New-Item -Path $Out -ItemType Directory -Force | Out-Null
+        if ((Get-ChildItem -Path $Out).Length -gt 0) {
+            # help user to not overwrite existing files if not desired
+            if ($Force) {
+                Write-Out -Type "WARN" "Der angegebene Out-Pfad %s existiert bereits" $Out
+                Write-Out "Leeren des Out-Ordners. Dies könnte einen Moment dauern..."
+                Remove-WithProgress -Path $Out -EmptyOnly -Id 10
+            } else {
+                Write-Out -Type "ERROR" "Der angegebene Out-Pfad %s existiert bereits" $Out
+                Exit-Error
+            }
+        }
+    } catch {
+        Write-Out -Type "ERROR" "Der angegebene Out-Pfad %s ist ungültig" $Out
+        Exit-Error $_
+    }
+} else {
+    # force it to PWD on map only
+    $Out = $PWD
 }
 
+# update working directory to start the script
 Set-Location $Path
 
 # =====================================================================
@@ -759,7 +857,7 @@ $PROJECTS_FILE = Join-Path $Out "projects.json"
 # Script
 # =====================================================================
 
-Write-Out "Aufräumen von %s nach %s" $Path $Out -ForceWriteLog
+Write-Out "Indexierung von %s" $Path -ForceWriteLog
 
 try {
     Find-Projects -Path $Path
@@ -775,18 +873,19 @@ try {
             Write-Host "`n"
             Write-Out "Projekt %s hat %s Versionen" $key $sorted.Count
 
+            # create index starting by 1
             $i = 1
             foreach ($value in $sorted) {
-                Write-Out "[ %s ] %s - %s" $i ($value.date -f "yyyy-MM-dd HH:mm:ss") $value.path
+                Write-Out "[ %s ] %s - %s" $i ($value.date -f "yyyy-MM-dd HH:mm:ss") (Resolve-Path $value.path -Relative)
                 $i += 1
             }
 
             $selectedIndex = -1
             # prompt until valid
             while ($selectedIndex -lt 1 -or $selectedIndex -ge ($sorted.Count + 1)) {
-                $input = Read-Host -Prompt "Bitte wähle die primäre Version aus (1)"
+                $userInput = Read-Host -Prompt "Bitte wähle die primäre Version aus (1)"
 
-                if ([string]::IsNullOrEmpty($input)) {
+                if ([string]::IsNullOrEmpty($userInput)) {
                     # set default if no value provided
                     $selectedIndex = 1
                     break
@@ -794,15 +893,16 @@ try {
 
                 # validate number
                 try {
-                    $selectedIndex = [int] $input
+                    $selectedIndex = [int] $userInput
                 } catch {
-                    Write-Out -Type "ERROR" "Eingabe %s ungültig. Bitte gib eine Zahl ein." $input
+                    Write-Out -Type "ERROR" "Eingabe %s ungültig. Bitte gib eine Zahl ein." $userInput
                     continue
                 }
             }
 
+            # remove 1 to get index since array starts at 0
             $primaryIndex = $selectedIndex - 1
-            Write-Out "Gewählte Primäre Version [ %s ] %s" ($primaryIndex + 1) ($sorted[$primaryIndex].path)
+            Write-Out "Gewählte Primäre Version [ %s ] %s" ($primaryIndex + 1) (Resolve-Path $sorted[$primaryIndex].path -Relative)
         } else {
             # set first to primary by default
             $primaryIndex = 0
@@ -821,79 +921,93 @@ try {
         Write-Out " %s Versionen, %s Projekte gefunden" $COUNT_PROJECT_VERSIONS $INDEX.Count
         if ($MapOnly) {
             Write-ProjectsJSON
-            Write-Out "Die Projekte wurden als JSON in %s gespeichert" $PROJECTS_FILE -ForceWriteLog
             Exit-Success
         } else {
             $useFlat = $false
+            # evalute folder structure, update on interactive or flat switch
             if ($Interactive -and -not $Flat) {
                 $useFlat = Get-Decision "Möchtest du die Projekte nach Datum sortiert abglegen?"
             } elseif ($Flat) {
                 $useFlat = $true
             }
+            Write-Out "Das Verschieben der Projekte wird vorbereitet"
 
-            Write-Out "Das Verschieben der Projekte wird vorbereitet" -ForceWriteLog
-
+            # create list of primary and versioned projects
             $primaryProjects = New-Object -TypeName System.Collections.ArrayList
-            $projectVersions = New-Object -TypeName System.Collections.ArrayList
+            $versionProjects = New-Object -TypeName System.Collections.ArrayList
 
             # cloned to avoid mutating while iterating
             $keys = $INDEX.Keys | ForEach-Object { $_ }
             $keys | ForEach-Object {
                 $projects = $INDEX[$_] | Sort-Object -Property primary -Descending
                 $primary = $projects[0]
-                $name = $primary.path | Split-Path -Leaf
+                $primaryName = $primary.path | Split-Path -Leaf
 
                 $newPrimaryPath = $null
                 if ($useFlat) {
-                    $newPrimaryPath = Join-Path $Out $name
+                    $newPrimaryPath = Join-Path $Out $primaryName
                 } else {
-                    $newPrimaryPath = Join-Path $Out (Join-Path $primary.date.Year $name)
+                    $newPrimaryPath = Join-Path $Out (Join-Path $primary.date.Year $primaryName)
                 }
 
+                # store primary project silently
                 $primaryProjects.Add([PSCustomObject]@{
-                    name = (Split-Path $primary.path -Leaf)
-                    path = $primary.path
-                    newPath = $newPrimaryPath
-                }) | Out-Null
+                        name    = $primaryName
+                        path    = $primary.path
+                        newPath = $newPrimaryPath
+                    }) | Out-Null
 
+                # add each versioned project as well
                 for ($i = 1; $i -lt $projects.Count; $i++) {
                     $versionName = $projects[$i].path | Split-Path -Leaf
-                    $projectVersions.Add([PSCustomObject]@{
-                        name = ".versions/v$($i)_$versionName"
-                        path = $projects[$i].path
-                        primary = $newPrimaryPath
-                    }) | Out-Null
+                    # they will be located in a subfolder '.versions' of the primary project
+                    # the 'primary' property is used as a base path for the versioned projects
+                    $versionProjects.Add([PSCustomObject]@{
+                            parent  = $primaryName
+                            name    = ".versions/v$($i)_$versionName"
+                            path    = $projects[$i].path
+                            primary = $newPrimaryPath
+                        }) | Out-Null
                 }
             }
 
             Write-Out "Die Projekte werden nach %s verschoben" $Out -ForceWriteLog -AddNewLine
 
-            Write-Progress  -Id 20 -Activity "Verschieben der Projekte" -Status "Verschieben der Projekte" -PercentComplete 0
-
+            Write-Progress  -Id 20 -Activity "Verschieben der Projekte" -Status "-" -PercentComplete 0
             $primaryMoved = 0
             $primaryProjects | ForEach-Object {
-                Write-Progress -Id 20 -Activity "Verschieben der Projekte" -PercentComplete ($primaryMoved / $INDEX.Count * 100)
+                # update progress with current project
+                Write-Progress -Id 20 -Activity "Verschieben der Projekte" -Status "Verschieben von $($_.name)" -PercentComplete ($primaryMoved / $primaryProjects.Count * 100)
                 Move-WithProgress -Path $_.path -Destination $_.newPath -Id 20 -ParentId 20
                 $primaryMoved++
+                # fallback output to ensure even with no Progress bar the user gets some feedback
+                Write-Out "Projekt %s erfolreich verschoben (%s/%s)" $_.name $primaryMoved $primaryProjects.Count
             }
 
-            $includeVerions = $true
-            if($Interactive){
-                $includeVerions = Get-Decision "Möchtest du die Versionen der Projekte mitverschieben?"
-            } elseif ($NoVersions) {
-                $includeVerions = $false
-            }
+            Write-Out "Die Primär Projekte wurden erfolgreich verschoben" -ForceWriteLog -AddNewLine
 
-            if($includeVerions){
-                $versionsMoved = 0
-                $projectVersions | ForEach-Object {
-                    Write-Progress -Id 20 -Activity "Verschieben der Projekt Versionen" -PercentComplete ($versionsMoved / ($COUNT_PROJECT_VERSIONS - $INDEX.Count) * 100)
-                    Move-WithProgress -Path $_.path -Destination (Join-Path $_.primary $_.name) -Id 20
-                    $versionsMoved++
+            # allow versioned projects to be moved as well
+            if ($versionProjects.Count -gt 0) {
+                $includeVerions = $true
+                if ($Interactive -and -not $NoVersions) {
+                    $includeVerions = Get-Decision "Möchtest du die $($versionProjects.Count) übrigen Versionen der Projekte mitverschieben?"
+                } elseif ($NoVersions) {
+                    $includeVerions = $false
                 }
+    
+                if ($includeVerions) {
+                    Write-Progress  -Id 20 -Activity "Verschieben der Projekte" -Status "-" -PercentComplete 0
+                    $versionsMoved = 0
+                    $versionProjects | ForEach-Object {
+                        # update progress with current project version
+                        Write-Progress -Id 20 -Activity "Verschieben der Versionen für $($_.parent)" -Status "Verschieben von $($_.name)" -PercentComplete ($versionsMoved / $versionProjects.Count * 100)
+                        Move-WithProgress -Path $_.path -Destination (Join-Path $_.primary $_.name) -Id 20
+                        $versionsMoved++
+                        # fallback output to ensure even with no Progress bar the user gets some feedback
+                        Write-Out "Projekt %s erfolreich verschoben (%s/%s)" "$($_.parent)/$($_.name)" $versionsMoved $versionProjects.Count
+                    }
+                }    
             }
-
-            Write-ProjectsJSON
 
             Write-Host "`n"
             Write-Out "Die Projekte wurden erfolgreich verschoben"
