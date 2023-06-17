@@ -1,54 +1,72 @@
 ﻿<#
 .SYNOPSIS
-    A script to clean up a shared drive by extracting and reorganizing projects.
+ A script to clean up a shared drive by extracting, reorganizing, and optionally moving projects.
 
 .DESCRIPTION
-    This script is designed to clean up a shared drive. It extracts projects and reorganizes them in a new root directory. 
-    It identifies projects based on the presence of certain files (like "package.json", "requirements.txt", "*.sln", "*.pyproj", "README.md").
-    The script also provides options to force overwrite of existing files, enable modification date detection by file content, 
-    only map projects without moving them, enable manual primary project selection, and keep all projects in root when moving.
+ This script is designed to clean up a shared drive by identifying projects 
+ based on the presence of certain files (like "package.json", "requirements.txt", "*.sln", "*.pyproj", "README.md"). 
+ It extracts these projects and reorganizes them in a new root directory. 
+ The script provides various options to customize its behavior, including forcing overwrite of existing files, 
+ enabling modification date detection by file content, mapping projects without moving them, enabling manual primary project selection, 
+ and keeping all projects in root when moving.
 
-.PARAMETER
-    -Path: The directory to clean up.
-    -Out: The output directory for the cleaned up structure.
-    -Force: A switch to force overwrite of existing files in the output path.
-    -UseContent: A switch to enable modification date detection by file content.
-    -MapOnly: A switch to only map projects without moving them.
-    -Interactive: A switch to enable manual primary project selection.
-    -Flat: A switch to keep all projects in root when moving.
+.PARAMETER Path
+ The directory to clean up.
+
+.PARAMETER Out
+ The output directory for the cleaned up structure.
+
+.PARAMETER Force
+ A switch to force overwrite of existing files in the output path.
+
+.PARAMETER UseContent
+ A switch to enable modification date detection by file content.
+
+.PARAMETER MapOnly
+ A switch to only map projects without moving them.
+
+.PARAMETER Interactive
+ A switch to enable manual mode, will ask for (Force, Flat, NoVersions) switches and the primary project selection.
+
+.PARAMETER Flat
+ A switch to keep all projects in root when moving.
+
+.PARAMETER NoVersions
+ A switch to not create version folders.
+
+.PARAMETER CopyOnly
+ A switch to only copy files, do not move them.
 
 .EXAMPLE
-    .\praxisarbeit.ps1 -Path "C:\SharedDrive" -Out "C:\CleanDrive" -Force -Flat
+ .\script.ps1 -Path "D:\\" -Out "C:\CleanDrive" -Force -Flat
+
+ Will extract all projects from the "D:\\" drive and reorganize them in the "C:\CleanDrive" directory. 
 
 .NOTES
-    The script creates a log file and a JSON file with the project details in the output directory.
+ The script creates a log file and a JSON file with the project details in the output directory. 
+ It also provides detailed logging and progress bars for operations.
 
 .AUTHOR
-    Fokko Vos
+ Fokko Vos
 
 .LASTEDIT
-    23.05.2023
+ 17.06.2023
 
 .VERSION
-    1.0.0
+ 1.0.0
 #>
-
 param(
-    # directory to cleanup
-    [Parameter(Position = 0, HelpMessage = 'Path to cleanup')]
+    [Parameter(Position = 0, HelpMessage = 'Path to index')]
     [string]$Path = "",
-
-    # ouput for cleaned up structure
-    [Parameter(Position = 1, HelpMessage = 'Path to store cleaned up Data')]
-    [string]$Out = "$pwd/out",
-
-    [switch]$Force, # force overwrite of existing files (out-path)
-    [switch]$UseContent, # enable modification date detection by file content
-    [switch]$MapOnly, # only map projects, do not move them
-    [switch]$Interactive, # enable manual primary project selection
-    [switch]$Flat, # keep all projects in root when moving
-    [switch]$NoVersions, # do not create version folders
-    [switch]$CopyOnly # only copy files, do not move them
+    [Parameter(Position = 1, HelpMessage = 'Path to store projects')]
+    [string]$Out = "$PWD/out", # default to current working directory + /out
+    [switch]$Force,
+    [switch]$UseContent,
+    [switch]$MapOnly,
+    [switch]$Interactive,
+    [switch]$Flat,
+    [switch]$NoVersions,
+    [switch]$CopyOnly
 )
 
 # exit on error, handled with try-catch
@@ -740,7 +758,7 @@ function Get-Decision {
 
     .DESCRIPTION
     The Get-Decision function prompts the user for a decision (yes/no) based on a provided message. 
-    The function will keep prompting the user until a valid input ("y", "n" or empty) is provided. 
+    The function will keep prompting the user until a valid input ("j", "n" or empty) is provided. 
     If no input is provided, the function defaults to "yes".
 
     .PARAMETER Message
@@ -749,10 +767,10 @@ function Get-Decision {
     .EXAMPLE
     Get-Decision -Message "Do you want to continue?"
 
-    This will prompt the user with the message "Do you want to continue? (y/n, default: y)" and wait for a "y", "n" or empty response.
+    This will prompt the user with the message "Do you want to continue? (j/n, default: j)" and wait for a "j", "n" or empty response.
 
     .NOTES
-    If the user enters anything other than "y" or "n" or empty, an error message will be displayed and the user will be prompted again.
+    If the user enters anything other than "j" or "n" or empty, an error message will be displayed and the user will be prompted again.
     #>
     param(
         [Parameter(Mandatory = $true, Position = 0)]
@@ -824,8 +842,15 @@ if (-not $MapOnly) {
     try {
         New-Item -Path $Out -ItemType Directory -Force | Out-Null
         if ((Get-ChildItem -Path $Out).Length -gt 0) {
+            $useForce = $false
+            # ask user if he wants to overwrite existing files
+            if ($Interactive -and -not $Force) {
+                $useForce = Get-Decision "Der angegebene Out-Pfad $Out existiert bereits. Soll der Ordner geleert werden?"
+            } elseif ($Force) {
+                $useForce = $true
+            }
             # help user to not overwrite existing files if not desired
-            if ($Force) {
+            if ($useForce) {
                 Write-Out -Type "WARN" "Der angegebene Out-Pfad %s existiert bereits" $Out
                 Write-Out "Leeren des Out-Ordners. Dies könnte einen Moment dauern..."
                 Remove-WithProgress -Path $Out -EmptyOnly -Id 10
@@ -869,6 +894,7 @@ try {
         $sorted = $INDEX[$key] | Sort-Object -Property date -Descending
         $primaryIndex = $null
         
+        # primary project selection if interactive is set
         if ($Interactive -and $sorted.Count -gt 1) {
             Write-Host "`n"
             Write-Out "Projekt %s hat %s Versionen" $key $sorted.Count
@@ -913,6 +939,7 @@ try {
     }
 
     if ($INDEX.Count -gt 0) {
+        # count project versions
         $INDEX.Keys | ForEach-Object {
             $COUNT_PROJECT_VERSIONS += $INDEX[$_].Count
         }
@@ -971,7 +998,7 @@ try {
                 }
             }
 
-            Write-Out "Die Projekte werden nach %s verschoben" $Out -ForceWriteLog -AddNewLine
+            Write-Out "Die Projekte werden nach %s verschoben" $Out -AddNewLine
 
             Write-Progress  -Id 20 -Activity "Verschieben der Projekte" -Status "-" -PercentComplete 0
             $primaryMoved = 0
@@ -984,7 +1011,7 @@ try {
                 Write-Out "Projekt %s erfolreich verschoben (%s/%s)" $_.name $primaryMoved $primaryProjects.Count
             }
 
-            Write-Out "Die Primär Projekte wurden erfolgreich verschoben" -ForceWriteLog -AddNewLine
+            Write-Out "Die Primär Projekte wurden erfolgreich verschoben" -AddNewLine
 
             # allow versioned projects to be moved as well
             if ($versionProjects.Count -gt 0) {
@@ -996,12 +1023,12 @@ try {
                 }
     
                 if ($includeVerions) {
-                    Write-Progress  -Id 20 -Activity "Verschieben der Projekte" -Status "-" -PercentComplete 0
+                    Write-Progress  -Id 30 -Activity "Verschieben der Projekte" -Status "-" -PercentComplete 0
                     $versionsMoved = 0
                     $versionProjects | ForEach-Object {
                         # update progress with current project version
-                        Write-Progress -Id 20 -Activity "Verschieben der Versionen für $($_.parent)" -Status "Verschieben von $($_.name)" -PercentComplete ($versionsMoved / $versionProjects.Count * 100)
-                        Move-WithProgress -Path $_.path -Destination (Join-Path $_.primary $_.name) -Id 20
+                        Write-Progress -Id 30 -Activity "Verschieben der Versionen für $($_.parent)" -Status "Verschieben von $($_.name)" -PercentComplete ($versionsMoved / $versionProjects.Count * 100)
+                        Move-WithProgress -Path $_.path -Destination (Join-Path $_.primary $_.name) -Id 30
                         $versionsMoved++
                         # fallback output to ensure even with no Progress bar the user gets some feedback
                         Write-Out "Projekt %s erfolreich verschoben (%s/%s)" "$($_.parent)/$($_.name)" $versionsMoved $versionProjects.Count
