@@ -243,11 +243,11 @@ function Write-Out {
 
     param(
         [Parameter(Mandatory = $true, Position = 0)]
-        [string]$Message, # message to be logged
-        [string]$Type = "INFO", # type of the message
-        [switch]$LogOnly, # only log to file
-        [switch]$ForceWriteLog, # write log buffer to file
-        [switch]$AddNewLine, # add new line after message
+        [string]$Message,
+        [string]$Type = "INFO",
+        [switch]$LogOnly,
+        [switch]$ForceWriteLog,
+        [switch]$AddNewLine,
         [Parameter(ValueFromRemainingArguments = $true)]
         $highlighted # replacements for %s
     )
@@ -697,11 +697,11 @@ function Remove-WithProgress {
     #>
     param(
         [Parameter(Mandatory = $true, Position = 0)]
-        [string]$Path, # path to remove
-        [int]$Id, # progress bar id
-        [int]$ParentId = 0, # parent progress bar id
-        [switch]$EmptyOnly, # recreate base folder at the end
-        [int]$Levels = 2 # recursion level for progress bar (be carefull)
+        [string]$Path, 
+        [int]$Id, 
+        [int]$ParentId = 0, 
+        [switch]$EmptyOnly, 
+        [int]$Levels = 2
     )
 
     # auto increment id
