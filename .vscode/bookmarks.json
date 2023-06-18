@@ -9,22 +9,22 @@
 					"label": "Output"
 				},
 				{
-					"line": 376,
+					"line": 385,
 					"column": 84,
 					"label": "Pipeline & Objektbehandlung"
 				},
 				{
-					"line": 790,
+					"line": 799,
 					"column": 4,
 					"label": "Schleife & Input"
 				},
 				{
-					"line": 849,
+					"line": 858,
 					"column": 5,
 					"label": "Fehlerbehandlung & IF"
 				},
 				{
-					"line": 975,
+					"line": 984,
 					"column": 13,
 					"label": "Schleife & Pipeline"
 				}

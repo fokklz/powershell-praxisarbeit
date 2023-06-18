@@ -50,7 +50,7 @@
  Fokko Vos
 
 .LASTEDIT
- 17.06.2023
+ 18.06.2023
 
 .VERSION
  1.0.0
@@ -312,7 +312,16 @@ function Write-Out {
             # clear log buffer
             $LOG_TEMP.Clear()
         } catch {
-            # ignore errrors
+            # ignore errors while script not fully initialized
+            if (-not [string]::IsNullOrEmpty($LOG_FILE)) {
+                Write-Host "Fehler beim Schreiben in die Log-Datei" -ForegroundColor Red
+                if ($_.Exception.Message) {
+                    Write-Host $_.Exception.Message -ForegroundColor Red
+                    if ($_.Exception.InnerException) {
+                        Write-Host $_.Exception.InnerException.Message -ForegroundColor Red
+                    }
+                }
+            }
         }
     }
 }
