@@ -4,4 +4,5 @@
     "powershell.codeFormatting.newLineAfterCloseBrace": false,
     "editor.mouseWheelZoom": true,
     "git.ignoreLimitWarning": true,
+    "bookmarks.saveBookmarksInProject": true,
 }

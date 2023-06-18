@@ -1,0 +1,34 @@
+{
+	"files": [
+		{
+			"path": "script.ps1",
+			"bookmarks": [
+				{
+					"line": 311,
+					"column": 5,
+					"label": "Output"
+				},
+				{
+					"line": 376,
+					"column": 84,
+					"label": "Pipeline & Objektbehandlung"
+				},
+				{
+					"line": 790,
+					"column": 4,
+					"label": "Schleife & Input"
+				},
+				{
+					"line": 849,
+					"column": 5,
+					"label": "Fehlerbehandlung & IF"
+				},
+				{
+					"line": 975,
+					"column": 13,
+					"label": "Schleife & Pipeline"
+				}
+			]
+		}
+	]
+}

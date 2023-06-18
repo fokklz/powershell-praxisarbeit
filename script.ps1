@@ -43,7 +43,7 @@
  Will extract all projects from the "D:\\" drive and reorganize them in the "C:\CleanDrive" directory. 
 
 .NOTES
- The script creates a log file and a JSON file with the project details in the output directory. 
+ The script creates a log file and a JSON file with the project details in the output directory (MAPONLY). 
  It also provides detailed logging and progress bars for operations.
 
 .AUTHOR
@@ -358,7 +358,9 @@ function Get-LastModificationDate {
                 Get-Content -Path $fullPath | ForEach-Object {
                     if ($_ -match $RGX_COPYRIGHT) {
                         # update year from first match
-                        $year = $Matches[1]
+                        if ($local:year -lt $Matches[1]) {
+                            $local:year = $Matches[1]
+                        }
                     }
                 }
             }
@@ -536,11 +538,16 @@ function Write-ProjectsJSON {
         # clone to avoid mutation errors
         $values = $INDEX[$key].Clone()
         for ($i = 0; $i -lt $values.Count; $i++) {
+            # convert date to universal time format
+            if ($values[$i].date -is [datetime]) {
+                $values[$i].date = $values[$i].date.ToString("yyyy-MM-ddTHH:mm:ssZ")
+            }
+
             if ($MapOnly) {
                 # remove new path when only mapping
                 $newData = [PSCustomObject]@{
                     path    = $values[$i].path
-                    date    = $values[$i].date.ToString("yyyy-MM-ddTHH:mm:ssZ")
+                    date    = $values[$i].date
                     primary = $values[$i].primary
                 }
                 $values[$i] = $newData
