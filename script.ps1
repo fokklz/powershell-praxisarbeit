@@ -56,8 +56,8 @@
  1.0.0
 #>
 param(
-    [Parameter(Position = 0, HelpMessage = 'Path to index')]
-    [string]$Path = "",
+    [Parameter(Mandatory = $true, Position = 0, HelpMessage = 'Path to index')]
+    [string]$Path,
     [Parameter(Position = 1, HelpMessage = 'Path to store projects')]
     [string]$Out = "$PWD/out", # default to current working directory + /out
     [switch]$Force,
